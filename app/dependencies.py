@@ -14,7 +14,7 @@ async def validate_signature(request: Request):
     if not signature:
         raise HTTPException(status_code=403, detail="Missing signature header")
 
-    # Meta sends "sha256=...", we need to strip the prefix
+   
     signature = signature.replace("sha256=", "")
 
     body = await request.body()

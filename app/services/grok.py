@@ -13,7 +13,6 @@ template_env = Environment(loader=FileSystemLoader("templates"))
 # 1. Load MARKDOWN Knowledge Base
 def load_knowledge_base():
     try:
-        # Now reading .md files instead of .txt
         with open("data/laboral.md", "r", encoding="utf-8") as f:
             labor_law = f.read()
         with open("data/transito.md", "r", encoding="utf-8") as f:
@@ -35,14 +34,13 @@ def get_system_prompt():
     try:
         template = template_env.get_template("abogado_ec.j2")
 
-        # Renderizamos el texto final
         return template.render(
             LABOR_MD=LABOR_MD,
             TRAFFIC_MD=TRAFFIC_MD,
             ALIMONY_MD=ALIMONY_MD,
             date=datetime.now().strftime("%d/%m/%Y"),
             # Cambia a True si en el futuro usas un modelo que "piensa" (ej: grok-beta)
-            is_thinking_model=False
+            is_thinking_model=True
         )
     except Exception as e:
         print(f"Error loading template: {e}")
