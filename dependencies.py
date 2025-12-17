@@ -4,7 +4,6 @@ import os
 from fastapi import Request, HTTPException, Security
 from fastapi.security import APIKeyHeader
 
-# Load secret once
 APP_SECRET = os.getenv("APP_SECRET")
 
 async def validate_signature(request: Request):

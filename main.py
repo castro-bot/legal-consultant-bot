@@ -6,7 +6,7 @@ from routers import webhook
 from fastapi.staticfiles import StaticFiles
 import os
 
-app = FastAPI(title="Ecuadorian Legal Bot")
+app = FastAPI(title="Ecuadorian Legal Consultant Bot")
 
 os.makedirs("static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")

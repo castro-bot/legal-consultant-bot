@@ -96,3 +96,61 @@ async def send_whatsapp_pdf(to_number: str, pdf_url: str, caption: str, filename
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
             logging.error(f"Failed to send PDF: {e.response.text}")
+
+# ... (imports) ...
+
+async def send_interactive_list(to_number: str):
+    
+    url = f"https://graph.facebook.com/{version}/{phone_id}/messages"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to_number,
+        "type": "interactive",
+        "interactive": {
+            "type": "list",
+            "header": {
+                "type": "text",
+                "text": "⚖️ Directorio Legal"
+            },
+            "body": {
+                "text": "Selecciona el área legal para tu consulta:"
+            },
+            "footer": {
+                "text": "AbogadoEC - Asistencia Inteligente"
+            },
+            "action": {
+                "button": "Ver Opciones",
+                "sections": [
+                    {
+                        "title": "Áreas Comunes",
+                        "rows": [
+                            {
+                                "id": "menu_laboral",
+                                "title": "Laboral / Trabajo",
+                                "description": "Despidos, Liquidaciones, Acoso"
+                            },
+                            {
+                                "id": "menu_transito",
+                                "title": "Tránsito / Multas",
+                                "description": "Impugnaciones, Licencias"
+                            },
+                            {
+                                "id": "menu_familia",
+                                "title": "Familia / Pensiones",
+                                "description": "Tabla 2025, Juicios"
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    }
+
+    async with httpx.AsyncClient() as client:
+        await client.post(url, json=payload, headers=headers)
