@@ -1,12 +1,13 @@
 import os
 import re
+import json
 import time
 import unicodedata
 from fastapi import APIRouter, Request, Query, Response, BackgroundTasks, Depends
 from dependencies import validate_signature
-from services.grok import generate_grok_reply
+from services.grok import generate_grok_reply, reset_user_memory
 from utils.pdf_generator import generar_pdf_pension
-from utils.whatsapp import send_whatsapp_message, mark_as_read_and_typing, send_whatsapp_pdf
+from utils.whatsapp import send_whatsapp_message, mark_as_read_and_typing, send_whatsapp_pdf, send_interactive_list
 
 NGROK_URL = os.getenv("NGROK_URL")
 router = APIRouter()
@@ -30,22 +31,62 @@ async def handle_message(request: Request, background_tasks: BackgroundTasks):
     body = await request.json()
 
     try:
-        entry = body["entry"][0]
-        changes = entry["changes"][0]
-        value = changes["value"]
-
-        if "messages" in value:
+        # Check if it's a valid WhatsApp message
+        if (
+            body.get("entry")
+            and body["entry"][0].get("changes")
+            and body["entry"][0]["changes"][0].get("value")
+            and body["entry"][0]["changes"][0]["value"].get("messages")
+        ):
+            entry = body["entry"][0]
+            changes = entry["changes"][0]
+            value = changes["value"]
             message = value["messages"][0]
 
-            # 2. EXTRACT DATA
-            message_id = message["id"] # <--- WE NEED THIS ID
+            # Extract ID and Number (Present in ALL types)
             from_number = message["from"]
-            msg_body = message["text"]["body"]
+            message_id = message["id"]
 
-            # 3. PASS 'message_id' TO THE BACKGROUND TASK
-            background_tasks.add_task(process_conversation, from_number, msg_body, message_id)
+            # --- CRITICAL FIX: DETECT TYPE ---
+            msg_type = message.get("type")
+            user_text = ""
+
+            # CASE A: Standard Text Message
+            if msg_type == "text":
+                user_text = message["text"]["body"]
+
+            # CASE B: Interactive (Button/List Click)
+            elif msg_type == "interactive":
+                interaction = message["interactive"]
+                interaction_type = interaction["type"]
+
+                if interaction_type == "list_reply":
+                    # User clicked a List Menu option
+                    # We use the title/description as the text to send to Grok
+                    user_text = interaction["list_reply"]["title"]
+                    # Optional: You can also use interaction["list_reply"]["id"] for logic
+
+                elif interaction_type == "button_reply":
+                    # User clicked a Button
+                    user_text = interaction["button_reply"]["title"]
+
+            # CASE C: Ignore other types (Image, Audio, Status updates)
+            else:
+                print(f"Ignored message type: {msg_type}")
+                return {"status": "ignored"}
+
+            # --- PROCESS IF WE EXTRACTED TEXT ---
+            if user_text:
+                # Handle special menu commands locally
+                if user_text.lower() in ["menu", "menú", "ayuda"]:
+                    # Ensure send_interactive_list is imported from utils.whatsapp
+                    background_tasks.add_task(send_interactive_list, from_number)
+                else:
+                    # Send to AI
+                    background_tasks.add_task(process_conversation, from_number, user_text, message_id)
 
     except Exception as e:
+        # Print the full error to help debug future issues
         print(f"Parsing error: {e}")
 
     return {"status": "ok"}
@@ -57,10 +98,6 @@ def normalizar(texto: str) -> str:
         if unicodedata.category(c) != 'Mn'
     ).lower()
 
-# 4. UPDATE THE BACKGROUND TASK SIGNATURE
-import json
-import re # Importar Regex
-# ... otros imports ...
 
 # Función auxiliar para extraer el JSON oculto
 def extraer_datos_pdf(texto_ai):
@@ -78,9 +115,30 @@ def extraer_datos_pdf(texto_ai):
             return None, texto_ai
     return None, texto_ai
 
-# ... (dentro de process_conversation) ...
 
 async def process_conversation(user_id: str, user_text: str, message_id: str):
+
+    # --- COMMAND HANDLER ---
+    # Check if message is a command (starts with /)
+    if user_text.startswith("/"):
+        command = user_text.lower().strip()
+
+        if command == "/reset":
+            # Execute Reset
+            reset_user_memory(user_id)
+
+            # Confirm to User
+            await send_whatsapp_message(
+                user_id,
+                "🔄 *Memoria reiniciada.* \nHe olvidado nuestra conversación anterior. ¿En qué puedo ayudarte ahora?"
+            )
+            return # STOP here, do not send to Grok
+
+        elif command == "/ayuda":
+            # Trigger your menu
+            await send_interactive_list(user_id)
+            return
+
     await mark_as_read_and_typing(message_id)
 
     # 1. Grok genera respuesta (con el JSON oculto)
@@ -103,8 +161,9 @@ async def process_conversation(user_id: str, user_text: str, message_id: str):
             nombre_archivo=filename,
             salario=f"${datos_pdf.get('salario', '0')}",
             hijos=datos_pdf.get('hijos', '0'),
-            porcentaje=datos_pdf.get('porcentaje', '0%'),
-            total_estimado=f"${datos_pdf.get('total', '0.00')}"
+            porcentaje=datos_pdf.get('porcentaje', '0%'), # Matches prompt key "porcentaje"
+            total_estimado=f"${datos_pdf.get('total', '0.00')}",
+            nivel=datos_pdf.get('nivel_tabla', 'N/A') # NEW FIELD
         )
 
         if NGROK_URL:

@@ -5,17 +5,17 @@ from datetime import datetime
 class PDF(FPDF):
     def header(self):
         # Título del Reporte
-        self.set_font('Arial', 'B', 16)
+        self.set_font('Times', 'B', 16)
         self.cell(0, 10, 'Reporte de Asesoría Legal - AbogadoEC', 0, 1, 'C')
         self.ln(5)
 
     def footer(self):
         # Pie de página
         self.set_y(-15)
-        self.set_font('Arial', 'I', 8)
+        self.set_font('Times', 'I', 8)
         self.cell(0, 10, f'Página {self.page_no()}', 0, 0, 'C')
 
-def generar_pdf_pension(nombre_archivo, salario, hijos, porcentaje, total_estimado):
+def generar_pdf_pension(nombre_archivo, salario, hijos, porcentaje, total_estimado, nivel="N/A"):
     """
     Genera un PDF con el cálculo detallado y lo guarda en la carpeta 'static'.
     """
@@ -27,7 +27,7 @@ def generar_pdf_pension(nombre_archivo, salario, hijos, porcentaje, total_estima
 
     pdf = PDF()
     pdf.add_page()
-    pdf.set_font("Arial", size=12)
+    pdf.set_font("Times", size=12)
 
     # Contenido del Reporte
     texto = [
@@ -37,6 +37,7 @@ def generar_pdf_pension(nombre_archivo, salario, hijos, porcentaje, total_estima
         "-------------------------------------------------------------",
         f"Salario Base Reportado: ${salario}",
         f"Número de Hijos: {hijos}",
+        f"Nivel de Tabla MIES: {nivel}",
         f"Porcentaje Aplicable (Tabla 2025): {porcentaje}",
         "-------------------------------------------------------------",
         f"TOTAL MENSUAL A PAGAR: ${total_estimado}",

@@ -1,10 +1,14 @@
 import os
 from openai import AsyncOpenAI
+from jinja2 import Environment, FileSystemLoader
+from datetime import datetime
 
 client = AsyncOpenAI(
     api_key=os.getenv("XAI_API_KEY"),
     base_url="https://api.x.ai/v1"
 )
+
+template_env = Environment(loader=FileSystemLoader("templates"))
 
 # 1. Load MARKDOWN Knowledge Base
 def load_knowledge_base():
@@ -24,86 +28,51 @@ def load_knowledge_base():
 LABOR_MD, TRAFFIC_MD, ALIMONY_MD = load_knowledge_base()
 
 
-SYSTEM_INSTRUCTIONS = f"""
-ROLE:
-Eres "AbogadoEC", un amigo abogado experto en leyes ecuatorianas.
-Tu objetivo es explicar cosas complejas en lenguaje SENCILLO (como si hablaras con un cliente en persona).
+def get_system_prompt():
+    """
+    Lee el archivo .j2 y rellena las variables (Leyes, Fecha, Lógica)
+    """
+    try:
+        template = template_env.get_template("abogado_ec.j2")
 
---- KNOWLEDGE BASE (MARKDOWN FORMAT) ---
-# DOCUMENT 1: CÓDIGO DEL TRABAJO
-{LABOR_MD}
-
-# DOCUMENT 2: LEY DE TRÁNSITO
-{TRAFFIC_MD}
-
-# DOCUMENT 3: TABLA DE PENSIONES 2025
-{ALIMONY_MD}
---- END KNOWLEDGE BASE ---
-
-🚨 STRICT FORMATTING RULES (WHATSAPP MODE):
-1. 🚫 NO TABLES: WhatsApp breaks tables. NEVER use '|' or grids.
-   - Use lists instead:
-   *Rubro:* Valor
-   *Rubro:* Valor
-2. 🚫 NO MARKDOWN HEADERS: Do NOT use '#'.
-   - Instead use BOLD caps: *TÍTULO*
-3. 🚫 NO LEGALESE: Do NOT cite "Art. 188", "Art. 135" in every sentence.
-   - ONLY cite the article number if the user explicitly asks "Qué artículo dice eso?".
-   - Otherwise, just say "La ley dice..." or "El Código del Trabajo establece...".
-4. ✅ USE WHATSAPP FORMATS:
-   - Bold: *text*
-   - Italic: _text_
-   - Lists: - item
-   - Quotes: > text
-
-TONE INSTRUCTIONS:
-- Be empathetic and clear.
-- Avoid technical jargon. Use "Despido intempestivo" but explain it as "Te sacaron sin aviso".
-- If calculations are needed, give the final number clearly.
-
-OUTPUT TEMPLATE:
-👋 *Hola! [Breve saludo humano]*
-
-*ANÁLISIS DE TU CASO*
-[Explicación simple en 2 lineas]
-
-*CÁLCULO ESTIMADO* 💰
-- *Rubro A:* $xxx
-- *Rubro B:* $xxx
-> _Recuerda que esto es un estimado._
-
-*RECOMENDACIÓN* 💡
-[1 acción concreta que debe hacer el usuario]
-
-🚨 INSTRUCCIÓN OCULTA PARA GENERACIÓN DE PDF:
-Si el usuario pide un cálculo de PENSIONES (o el contexto lo requiere), DEBES incluir al final de tu respuesta un bloque JSON con los datos exactos que usaste para el cálculo.
-Formato OBLIGATORIO:
-||DATA_START||
-{{
-  "salario": "valor numérico (ej: 500)",
-  "hijos": "cantidad (ej: 2)",
-  "porcentaje": "ej: 39.71%",
-  "total": "ej: 198.55"
-}}
-||DATA_END||
-
-NOTA: Este bloque JSON es para uso interno del sistema. El usuario NO debe verlo, pero tú debes generarlo para que yo pueda crear el PDF.
-"""
+        # Renderizamos el texto final
+        return template.render(
+            LABOR_MD=LABOR_MD,
+            TRAFFIC_MD=TRAFFIC_MD,
+            ALIMONY_MD=ALIMONY_MD,
+            date=datetime.now().strftime("%d/%m/%Y"),
+            # Cambia a True si en el futuro usas un modelo que "piensa" (ej: grok-beta)
+            is_thinking_model=False
+        )
+    except Exception as e:
+        print(f"Error loading template: {e}")
+        return "Error crítico cargando instrucciones del sistema."
 
 
 conversation_history = {}
 
+def reset_user_memory(user_id: str):
+    """
+    Clears the conversation history for a specific user.
+    """
+    if user_id in conversation_history:
+        del conversation_history[user_id]
+        print(f"🧹 Memory wiped for user {user_id}")
+        return True
+    return False
+
 async def generate_grok_reply(user_id: str, user_text: str):
     if user_id not in conversation_history:
+        system_content = get_system_prompt()
         conversation_history[user_id] = [
-            {"role": "system", "content": SYSTEM_INSTRUCTIONS}
+            {"role": "system", "content": system_content}
         ]
 
     conversation_history[user_id].append({"role": "user", "content": user_text})
 
     try:
         response = await client.chat.completions.create(
-            model="grok-4-1-fast-non-reasoning",
+            model="grok-4-1-fast-reasoning",
             messages=conversation_history[user_id],
             temperature=0.2 # Lower temperature for better table reading
         )
