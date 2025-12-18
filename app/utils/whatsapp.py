@@ -77,16 +77,15 @@ async def send_whatsapp_pdf(to_number: str, pdf_url: str, caption: str, filename
         "Content-Type": "application/json",
     }
 
-    # Payload para documento (basado en la documentación oficial que enviaste)
     payload = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
         "to": to_number,
         "type": "document",
         "document": {
-            "link": pdf_url,      # URL pública del PDF (Ngrok)
-            "caption": caption,   # Texto que acompaña al archivo
-            "filename": filename  # Nombre que verá el usuario (ej: Calculo.pdf)
+            "link": pdf_url,
+            "caption": caption,
+            "filename": filename
         }
     }
 
@@ -97,10 +96,9 @@ async def send_whatsapp_pdf(to_number: str, pdf_url: str, caption: str, filename
         except httpx.HTTPStatusError as e:
             logging.error(f"Failed to send PDF: {e.response.text}")
 
-# ... (imports) ...
 
 async def send_interactive_list(to_number: str):
-    
+
     url = f"https://graph.facebook.com/{version}/{phone_id}/messages"
     headers = {
         "Authorization": f"Bearer {token}",

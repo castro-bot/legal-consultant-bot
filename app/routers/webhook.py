@@ -4,10 +4,10 @@ import json
 import time
 import unicodedata
 from fastapi import APIRouter, Request, Query, Response, BackgroundTasks, Depends
-from dependencies import validate_signature
-from services.grok import generate_grok_reply, reset_user_memory
-from utils.pdf_generator import generar_pdf_pension
-from utils.whatsapp import send_whatsapp_message, mark_as_read_and_typing, send_whatsapp_pdf, send_interactive_list
+from app.dependencies import validate_signature
+from app.services.grok import generate_grok_reply, reset_user_memory
+from app.utils.pdf_generator import generar_pdf_pension
+from app.utils.whatsapp import send_whatsapp_message, mark_as_read_and_typing, send_whatsapp_pdf, send_interactive_list
 
 NGROK_URL = os.getenv("NGROK_URL")
 router = APIRouter()
@@ -43,46 +43,45 @@ async def handle_message(request: Request, background_tasks: BackgroundTasks):
             value = changes["value"]
             message = value["messages"][0]
 
-            # Extract ID and Number (Present in ALL types)
+            # Extract ID and Number
             from_number = message["from"]
             message_id = message["id"]
 
-            # --- CRITICAL FIX: DETECT TYPE ---
             msg_type = message.get("type")
             user_text = ""
 
-            # CASE A: Standard Text Message
+            # Standard Text Message
             if msg_type == "text":
                 user_text = message["text"]["body"]
 
-            # CASE B: Interactive (Button/List Click)
+            # Interactive (Button/List Click)
             elif msg_type == "interactive":
                 interaction = message["interactive"]
                 interaction_type = interaction["type"]
 
                 if interaction_type == "list_reply":
                     # User clicked a List Menu option
-                    # We use the title/description as the text to send to Grok
+
                     user_text = interaction["list_reply"]["title"]
-                    # Optional: You can also use interaction["list_reply"]["id"] for logic
+
 
                 elif interaction_type == "button_reply":
                     # User clicked a Button
                     user_text = interaction["button_reply"]["title"]
 
-            # CASE C: Ignore other types (Image, Audio, Status updates)
+            # Ignore other types (Image, Audio, Status updates)
             else:
                 print(f"Ignored message type: {msg_type}")
                 return {"status": "ignored"}
 
-            # --- PROCESS IF WE EXTRACTED TEXT ---
+
             if user_text:
-                # Handle special menu commands locally
+
                 if user_text.lower() in ["menu", "menú", "ayuda"]:
-                    # Ensure send_interactive_list is imported from utils.whatsapp
+
                     background_tasks.add_task(send_interactive_list, from_number)
                 else:
-                    # Send to AI
+
                     background_tasks.add_task(process_conversation, from_number, user_text, message_id)
 
     except Exception as e:
@@ -118,8 +117,7 @@ def extraer_datos_pdf(texto_ai):
 
 async def process_conversation(user_id: str, user_text: str, message_id: str):
 
-    # --- COMMAND HANDLER ---
-    # Check if message is a command (starts with /)
+
     if user_text.startswith("/"):
         command = user_text.lower().strip()
 
@@ -132,7 +130,7 @@ async def process_conversation(user_id: str, user_text: str, message_id: str):
                 user_id,
                 "🔄 *Memoria reiniciada.* \nHe olvidado nuestra conversación anterior. ¿En qué puedo ayudarte ahora?"
             )
-            return # STOP here, do not send to Grok
+            return
 
         elif command == "/ayuda":
             # Trigger your menu
@@ -150,8 +148,6 @@ async def process_conversation(user_id: str, user_text: str, message_id: str):
     # 3. Enviamos el texto limpio al usuario
     await send_whatsapp_message(user_id, mensaje_final)
 
-    # 4. Lógica de PDF Dinámico
-    # Si Grok generó datos (datos_pdf no es None), creamos el PDF automáticamente
     if datos_pdf:
         print(f"🖨️ Generando PDF con datos dinámicos: {datos_pdf}")
 
@@ -161,9 +157,9 @@ async def process_conversation(user_id: str, user_text: str, message_id: str):
             nombre_archivo=filename,
             salario=f"${datos_pdf.get('salario', '0')}",
             hijos=datos_pdf.get('hijos', '0'),
-            porcentaje=datos_pdf.get('porcentaje', '0%'), # Matches prompt key "porcentaje"
+            porcentaje=datos_pdf.get('porcentaje', '0%'),
             total_estimado=f"${datos_pdf.get('total', '0.00')}",
-            nivel=datos_pdf.get('nivel_tabla', 'N/A') # NEW FIELD
+            nivel=datos_pdf.get('nivel_tabla', 'N/A')
         )
 
         if NGROK_URL:

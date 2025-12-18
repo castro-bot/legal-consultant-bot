@@ -3,3 +3,7 @@ uvicorn
 httpx
 python-dotenv
 openai
+httpx
+fpdf2
+jinja2
+python-multipart

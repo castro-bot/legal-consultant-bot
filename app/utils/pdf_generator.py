@@ -4,13 +4,11 @@ from datetime import datetime
 
 class PDF(FPDF):
     def header(self):
-        # Título del Reporte
         self.set_font('Times', 'B', 16)
         self.cell(0, 10, 'Reporte de Asesoría Legal - AbogadoEC', 0, 1, 'C')
         self.ln(5)
 
     def footer(self):
-        # Pie de página
         self.set_y(-15)
         self.set_font('Times', 'I', 8)
         self.cell(0, 10, f'Página {self.page_no()}', 0, 0, 'C')
@@ -19,7 +17,7 @@ def generar_pdf_pension(nombre_archivo, salario, hijos, porcentaje, total_estima
     """
     Genera un PDF con el cálculo detallado y lo guarda en la carpeta 'static'.
     """
-    # Crear carpeta static si no existe
+
     output_folder = "static"
     os.makedirs(output_folder, exist_ok=True)
 
@@ -29,7 +27,6 @@ def generar_pdf_pension(nombre_archivo, salario, hijos, porcentaje, total_estima
     pdf.add_page()
     pdf.set_font("Times", size=12)
 
-    # Contenido del Reporte
     texto = [
         f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}",
         "-------------------------------------------------------------",
@@ -50,7 +47,6 @@ def generar_pdf_pension(nombre_archivo, salario, hijos, porcentaje, total_estima
     ]
 
     for linea in texto:
-        # encode('latin-1', 'replace') corrige problemas básicos de tildes en fpdf
         pdf.cell(0, 10, linea.encode('latin-1', 'replace').decode('latin-1'), 0, 1)
 
     pdf.output(filepath)
