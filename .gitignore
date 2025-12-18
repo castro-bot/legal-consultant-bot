@@ -5,6 +5,7 @@ static/
 
 venv/
 *.pdf
+.env
 static/*.pdf
 
 # C extensions
