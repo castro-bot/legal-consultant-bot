@@ -9,7 +9,6 @@ from app.services.grok import generate_grok_reply, reset_user_memory
 from app.utils.pdf_generator import generar_pdf_pension
 from app.utils.whatsapp import send_whatsapp_message, mark_as_read_and_typing, send_whatsapp_pdf, send_interactive_list
 
-PUBLIC_URL = os.getenv("PUBLIC_URL")
 router = APIRouter()
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 
@@ -85,7 +84,6 @@ async def handle_message(request: Request, background_tasks: BackgroundTasks):
                     background_tasks.add_task(process_conversation, from_number, user_text, message_id)
 
     except Exception as e:
-        # Print the full error to help debug future issues
         print(f"Parsing error: {e}")
 
     return {"status": "ok"}
@@ -98,75 +96,89 @@ def normalizar(texto: str) -> str:
     ).lower()
 
 
-# Función auxiliar para extraer el JSON oculto
 def extraer_datos_pdf(texto_ai):
+    print("🔍 INTENTANDO EXTRAER DATOS DEL TEXTO...")
     patron = r"\|\|DATA_START\|\|(.*)\|\|DATA_END\|\|"
     match = re.search(patron, texto_ai, re.DOTALL)
 
     if match:
+        print("✅ ETIQUETAS ENCONTRADAS")
         json_str = match.group(1).strip()
+
+        if json_str.startswith("```json"):
+            json_str = json_str.replace("```json", "").replace("```", "")
+        elif json_str.startswith("```"):
+            json_str = json_str.replace("```", "")
+
+        json_str = json_str.strip()
+
         try:
             datos = json.loads(json_str)
-            # Limpiamos el mensaje para que el usuario no vea el código JSON
+            print(f"📦 JSON DECODIFICADO EXITOSAMENTE: {datos.keys()}")
             texto_limpio = texto_ai.replace(match.group(0), "").strip()
             return datos, texto_limpio
-        except:
+        except json.JSONDecodeError as e:
+            print(f"❌ ERROR JSON: No se pudo leer el JSON.\nError: {e}\nContenido: {json_str}")
             return None, texto_ai
-    return None, texto_ai
+    else:
+        print("⚠️ ALERTA: No se encontraron las etiquetas ||DATA_START|| en la respuesta.")
+        return None, texto_ai
 
 
 async def process_conversation(user_id: str, user_text: str, message_id: str):
-
-
     if user_text.startswith("/"):
-        command = user_text.lower().strip()
-
-        if command == "/reset":
-            # Execute Reset
+        if user_text.lower().strip() == "/reset":
             reset_user_memory(user_id)
-
-            # Confirm to User
-            await send_whatsapp_message(
-                user_id,
-                "🔄 *Memoria reiniciada.* \nHe olvidado nuestra conversación anterior. ¿En qué puedo ayudarte ahora?"
-            )
+            await send_whatsapp_message(user_id, "🔄 Memoria reiniciada.")
             return
-
-        elif command == "/ayuda":
-            # Trigger your menu
+        elif user_text.lower().strip() == "/ayuda":
             await send_interactive_list(user_id)
             return
 
     await mark_as_read_and_typing(message_id)
 
-    # 1. Grok genera respuesta (con el JSON oculto)
+    print(f"🤖 CONSULTANDO A GROK (User: {user_id})...")
     ai_raw_response = await generate_grok_reply(user_id, user_text)
+    print(f"📝 RESPUESTA CRUDA DE GROK:\n{ai_raw_response}\n--------------------------------")
 
-    # 2. Extraemos datos y limpiamos el texto
     datos_pdf, mensaje_final = extraer_datos_pdf(ai_raw_response)
 
-    # 3. Enviamos el texto limpio al usuario
     await send_whatsapp_message(user_id, mensaje_final)
 
     if datos_pdf:
-        print(f"🖨️ Generando PDF con datos dinámicos: {datos_pdf}")
-
+        print(f"🚀 INICIANDO GENERACIÓN DE PDF LOCAL...")
         filename = f"Calculo_{user_id}_{int(time.time())}.pdf"
 
-        generar_pdf_pension(
-            nombre_archivo=filename,
-            salario=f"${datos_pdf.get('salario', '0')}",
-            hijos=datos_pdf.get('hijos', '0'),
-            porcentaje=datos_pdf.get('porcentaje', '0%'),
-            total_estimado=f"${datos_pdf.get('total', '0.00')}",
-            nivel=datos_pdf.get('nivel_tabla', 'N/A')
-        )
+        try:
+            ruta_pdf = generar_pdf_pension(
+                nombre_archivo=filename,
+                salario=f"${datos_pdf.get('salario', '0')}",
+                hijos=datos_pdf.get('hijos', '0'),
+                porcentaje=f"{datos_pdf.get('porcentaje', datos_pdf.get('porcentaje_base', '0%'))}",
+                total_estimado=f"${datos_pdf.get('total', '0.00')}",
+                nivel=datos_pdf.get('nivel_tabla', 'N/A')
+            )
+            print(f"✅ PDF CREADO EN: static/{filename}")
+        except Exception as e:
+            print(f"❌ ERROR EN FPDF: {e}")
+            return
 
-        if PUBLIC_URL:
-            pdf_link = f"{PUBLIC_URL}/static/{filename}"
+        ngrok_url = os.getenv("NGROK_URL")
+        public_url = os.getenv("PUBLIC_URL")
+        base_url = ngrok_url if ngrok_url else public_url
+
+        if base_url:
+            if base_url.endswith("/"): base_url = base_url[:-1]
+            pdf_link = f"{base_url}/static/{filename}"
+            print(f"🔗 ENVIANDO A WHATSAPP: {pdf_link}")
+
             await send_whatsapp_pdf(
                 to_number=user_id,
                 pdf_url=pdf_link,
-                caption="📄 Aquí tienes el reporte oficial con TUS datos.",
-                filename="Reporte_Personalizado.pdf"
+                caption="📄 Reporte Oficial",
+                filename="Reporte_Legal.pdf"
             )
+        else:
+            print("❌ ERROR URL: No se encontró NGROK_URL ni PUBLIC_URL.")
+    else:
+        print("🛑 PROCESO DETENIDO: No hay datos_pdf (Grok no envió JSON o falló la extracción).")
