@@ -4,10 +4,10 @@ import json
 import time
 import unicodedata
 from fastapi import APIRouter, Request, Query, Response, BackgroundTasks, Depends
-from app.dependencies import validate_signature
-from app.services.grok import generate_grok_reply, reset_user_memory
-from app.utils.pdf_generator import generar_pdf_pension
-from app.utils.whatsapp import send_whatsapp_message, mark_as_read_and_typing, send_whatsapp_pdf, send_interactive_list
+from dependencies import validate_signature
+from services.grok import generate_grok_reply, reset_user_memory
+from utils.pdf_generator import generar_pdf_pension
+from utils.whatsapp import send_whatsapp_message, mark_as_read_and_typing, send_whatsapp_pdf, send_interactive_list
 
 PUBLIC_URL = os.getenv("PUBLIC_URL")
 router = APIRouter()
